@@ -35,7 +35,7 @@
 </head>
 <body>
 <a class="skiplink" href="#main">Aller au contenu</a>
-<header class="site-header"><div class="header-inner"><div class="brand">JEOPARDY ! <span>Univers social</span></div><nav class="tabs" aria-label="Mode"><button id="tab-edit" class="active" type="button" onclick="showMode('edit')">✎ Modifier ma banque</button><button id="tab-play" type="button" onclick="showMode('play')">▶ Jouer</button></nav></div></header>
+<header class="site-header"><div class="header-inner"><div class="brand">JEOPARDY ! <span>Univers social</span> <small style="font-size:11px;opacity:.7;white-space:nowrap">V7 · 3 × 3</small></div><nav class="tabs" aria-label="Mode"><button id="tab-edit" class="active" type="button" onclick="showMode('edit')">✎ Modifier ma banque</button><button id="tab-play" type="button" onclick="showMode('play')">▶ Jouer</button></nav></div></header>
 <main id="main" class="wrap">
 <section id="edit-screen">
  <div class="panel">
@@ -92,7 +92,19 @@ const STORAGE_KEY=PREFIX+bankId;
 const clone=v=>JSON.parse(JSON.stringify(v));
 function normalize(raw){if(!raw||!Array.isArray(raw.categories)||raw.categories.length<1||raw.categories.length>MAX_CATEGORIES)throw Error('Nombre de catégories invalide.');const d=makeBank(bankId);d.title=String(raw.title||'').slice(0,140);d.categories=raw.categories.map((c,i)=>{if(!c||!Array.isArray(c.cards)||c.cards.length<1||c.cards.length>10)throw Error('Chaque catégorie doit compter de 1 à 10 questions.');return{title:String(c.title??'Catégorie '+(i+1)).slice(0,100),cards:c.cards.map(x=>({q:String(x?.q||''),a:String(x?.a||''),image:typeof x?.image==='string'&&x.image.startsWith('data:image/')?x.image:'',source:String(x?.source||''),special:['normal','double','bonus'].includes(x?.special)?x.special:'normal'}))}});d.teamCount=Math.max(1,Math.min(5,Number(raw.teamCount)||3));d.teamNames=Array.from({length:5},(_,i)=>String(raw.teamNames?.[i]||'Équipe '+(i+1)).slice(0,50));d.scores=Array.from({length:5},(_,i)=>Number(raw.scores?.[i])||0);d.used=Array.isArray(raw.used)?raw.used.filter(s=>typeof s==='string'):[];d.final={q:String(raw.final?.q||''),a:String(raw.final?.a||''),points:Math.max(1,Math.min(10,Number(raw.final?.points)||5))};d.finalUsed=!!raw.finalUsed;d.winnerIndex=Number.isInteger(raw.winnerIndex)&&raw.winnerIndex>=0&&raw.winnerIndex<5?raw.winnerIndex:null;return d}
 let data;let storageWarning=false;
-try{const saved=localStorage.getItem(STORAGE_KEY);data=normalize(saved?JSON.parse(saved):(EMBEDDED_BANK||makeBank(bankId)))}catch(error){data=normalize(EMBEDDED_BANK||makeBank(bankId));storageWarning=true}
+function hasAuthoredContent(d){
+ return Boolean(d.title?.trim()||d.final?.q?.trim()||d.final?.a?.trim()||
+ d.categories?.some((c,i)=>c.cards?.some(card=>card.q?.trim()||card.a?.trim()||card.image||card.source?.trim())||
+ (c.title?.trim()&&c.title.trim()!=='Catégorie '+(i+1)))||
+ d.teamNames?.some((name,i)=>name!=='Équipe '+(i+1))||
+ d.used?.length||d.scores?.some(n=>n!==0));
+}
+try{
+ const saved=localStorage.getItem(STORAGE_KEY);
+ const savedBank=saved?normalize(JSON.parse(saved)):null;
+ // Le modèle public évolue, mais les véritables banques personnalisées restent intactes.
+ data=savedBank&&hasAuthoredContent(savedBank)?savedBank:normalize(EMBEDDED_BANK||makeBank(bankId));
+}catch(error){data=normalize(EMBEDDED_BANK||makeBank(bankId));storageWarning=true}
 let currentMode='edit',active=null,revealed=false;
 function save(){try{localStorage.setItem(STORAGE_KEY,JSON.stringify(data));storageWarning=false;el('save-status').classList.remove('error');el('save-status').textContent='✓ Modifications sauvegardées localement'}catch(e){storageWarning=true;el('save-status').classList.add('error');el('save-status').textContent='⚠ Stockage local saturé — télécharge une copie HTML !'}}
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
