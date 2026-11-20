@@ -48,6 +48,7 @@
  <div class="panel"><h2>⭐ Question finale (facultative)</h2><p class="small muted">Pour départager les équipes à égalité ou terminer la partie avec un défi.</p><div class="final-editor"><label class="form-label" for="final-question">Question finale</label><textarea id="final-question" class="field text-area" rows="2" placeholder="Écris une question finale…"></textarea><label class="form-label" for="final-answer" style="margin-top:10px">Réponse attendue</label><textarea id="final-answer" class="field text-area" rows="2" placeholder="Réponse à dévoiler…"></textarea><label class="form-label" for="final-points" style="margin-top:10px">Points accordés</label><select id="final-points" class="field" style="max-width:140px"></select></div></div>
  <div class="panel bulk-actions"><h2>Terminé ? Sauvegarde une copie</h2><p class="small muted">Les images sont incluses dans les fichiers téléchargés. Conserve une copie : la sauvegarde locale du navigateur peut être effacée.</p>
   <div class="toolbar"><button class="btn good" onclick="downloadFullHTML()">↓ Télécharger mon Jeopardy complet (.html)</button><button class="btn primary" onclick="downloadBankExcel()">↓ Exporter ma banque Excel</button><label class="btn ghost" style="cursor:pointer">↑ Importer une banque Excel<input id="import-excel" type="file" accept=".xlsx" style="display:none" onchange="importExcel(event)"></label><button class="btn ghost" onclick="window.print()">⎙ Imprimer les questions</button></div>
+  <div class="toolbar" style="margin-top:12px"><button class="btn ghost" type="button" onclick="clearLocalData()">⌫ Effacer mes données locales</button><span class="small muted">Utile sur un ordinateur partagé. N'efface pas les fichiers téléchargés.</span></div>
   <p id="backup-result" class="small muted" aria-live="polite"></p>
  </div>
  <div class="panel"><h2>Comment ajouter une image ?</h2><div class="guide"><div class="guide-item"><strong>1. Choisis la question</strong><p class="small">Sous la question, clique sur « Ajouter une image ».</p></div><div class="guide-item"><strong>2. Sélectionne ton fichier</strong><p class="small">Choisis une photo JPG, PNG ou WebP sur ton ordinateur. L'aperçu apparaîtra sous la question.</p></div><div class="guide-item"><strong>3. Télécharge une copie</strong><p class="small">Le fichier HTML complet inclut l'image. Un fichier Excel contient uniquement les questions et réponses. Pas besoin de joindre un dossier d'images.</p></div></div></div>
@@ -110,6 +111,20 @@ function downloadBankJSON(){downloadBlob(JSON.stringify({format:'jeopardy-univer
 function downloadBlankJSON(){downloadBlob(JSON.stringify({format:'jeopardy-univers-social',version:3,...backupPayload(true)},null,2),'modele-banque-vierge-jeopardy.json','application/json;charset=utf-8')}
 function createHTML(d){const source='<!doctype html>\n'+document.documentElement.outerHTML;const payload=JSON.stringify(d).replace(/</g,'\\u003c').replace(/\u2028/g,'\\u2028').replace(/\u2029/g,'\\u2029');const needle=/const EMBEDDED_BANK = (?:null|\{[^\n]*\});/;if(!needle.test(source))throw Error('Impossible de préparer la copie HTML.');return source.replace(needle,'const EMBEDDED_BANK = '+payload+';')}
 function downloadFullHTML(){try{downloadBlob(createHTML(backupPayload()),'jeopardy-'+safeName()+'-complet.html','text/html;charset=utf-8');el('backup-result').textContent='✓ Fichier HTML autonome téléchargé : questions et images intégrées.'}catch(e){alert(e.message)}}
+function clearLocalData(){
+ if(!confirm('Effacer les données Jeopardy enregistrées dans ce navigateur ? Toutes les banques locales de cet outil seront supprimées. Les fichiers HTML ou Excel déjà téléchargés ne seront pas touchés.\n\nTélécharge ton Jeopardy avant de continuer si tu souhaites le conserver.'))return;
+ try{
+  const keys=[];
+  for(let i=0;i<localStorage.length;i++){const key=localStorage.key(i);if(key&&key.startsWith(PREFIX))keys.push(key)}
+  keys.forEach(key=>localStorage.removeItem(key));
+  data=makeBank(bankId);
+  active=null;revealed=false;
+  showMode('edit');
+  el('save-status').textContent='✓ Données locales effacées — nouveau modèle prêt';
+  el('save-status').classList.remove('error');
+  el('backup-result').textContent='✓ Données locales Jeopardy effacées de ce navigateur. Tes fichiers téléchargés sont conservés.';
+ }catch(error){alert('Impossible d’effacer les données locales : '+error.message)}
+}
 function downloadBlankHTML(){try{downloadBlob(createHTML(backupPayload(true)),'nouveau-jeopardy-univers-social.html','text/html;charset=utf-8');el('backup-result').textContent='✓ Nouveau Jeopardy téléchargé, prêt à remplir. Ton jeu actuel reste intact.'}catch(e){alert(e.message)}}
 async function importBank(event){const file=event.target.files?.[0];if(!file)return;try{const raw=JSON.parse(await file.text());const parsed=normalize(raw);if(!confirm('Remplacer la banque actuelle par cette banque importée ? Télécharge une copie de ta banque actuelle si tu veux la garder.'))return;data=parsed;data.used=[];data.scores=[0,0,0,0,0];data.winnerIndex=null;save();renderEditor();el('backup-result').textContent='✓ Banque importée avec succès, y compris ses images.'}catch(e){alert('Importation impossible : '+e.message)}finally{event.target.value=''}}
 const TEAM_COLORS=['#2676c6','#df464e','#21965b','#efa922','#8b59bd'];
@@ -198,7 +213,7 @@ async function importExcel(event){const file=event.target.files?.[0];if(!file)re
  if(!cats.size)throw Error('Aucune catégorie à importer.');const parsed=makeBank(uid());parsed.title=data.title;parsed.teamCount=data.teamCount;parsed.teamNames=clone(data.teamNames);parsed.categories=[...cats].map(([title,entries])=>{const top=Math.max(...entries.map(c=>c.points));return{title,cards:Array.from({length:top},(_,i)=>{const e=entries.find(x=>x.points===i+1);return{q:e?.q||'',a:e?.a||'',image:'',source:''}})}});if(!confirm('Importer cette banque Excel ? Elle remplacera les questions actuelles. Sauvegarde d’abord ton HTML si tu veux conserver les images présentes.'))return;data=normalize(parsed);save();renderEditor();el('backup-result').textContent=`✓ ${cats.size} catégorie${cats.size>1?'s':''} et ${[...cats.values()].reduce((sum,c)=>sum+c.length,0)} question(s) importées. ${ignoredBlank?ignoredBlank+' ligne(s) sans question ignorée(s). ':''}Tu peux maintenant ajouter tes images.`
  }catch(error){alert('Importation Excel impossible : '+error.message)}finally{event.target.value=''}}
 
-renderEditor();save();
+renderEditor();
 </script>
 </body>
 </html>
